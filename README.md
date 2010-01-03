@@ -6,8 +6,5 @@ If the header is not enough for you:
 * [CouchDB](http://couchdb.org/)
 * [node.js](http://tinyclouds.org/node/)
 
-The API is inspired by jquery.node.js.
-
-This is a very initial check-in, please bear with me :-)
-
-Feedback welcome.
+The API has been changed from the original [node-couch](http://github.com/sixtus/node-couch) and now returns promises
+instead of needing success and error callback functions in the options object.
