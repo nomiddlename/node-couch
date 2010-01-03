@@ -1,24 +1,16 @@
-include("mjsunit.js");
-include("../../module/node-couch.js");
+process.mixin(GLOBAL, require("./mjsunit"));
+process.mixin(GLOBAL, require("../../module/node-couch"));
 
 function unwantedError(result) {
-	throw("Unwanted error" + JSON.stringify(result));
+	throw(new Error("Unwanted error" + JSON.stringify(result)));
 }
 
 var result;
+CouchDB.allDbs().addCallback(function(value) {
+	result = value;
+}).addErrback(unwantedError).wait();
 
-function onLoad () {
-	CouchDB.allDbs({
-		success : function(response) {
-			result = response;
-		},
-		error : unwantedError
-	});
-}
-
-function onExit() {
-	assertInstanceof(result, Array);
-	for (var ii = 0; ii < result.length; ii++) {
-		assertEquals("string", typeof result[ii]);
-	}
+assertInstanceof(result, Array);
+for (var ii = 0; ii < result.length; ii++) {
+	assertEquals("string", typeof result[ii]);
 }

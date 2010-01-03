@@ -36,9 +36,9 @@ function cache_client(port, host) {
 }
 
 function _interact(verb, path, successStatus, options, port, host) {
-	verb = verb.toLowerCase();
+  verb = verb.toUpperCase();
 	options = options || {};
-	var request;
+	var request, promise = new process.Promise();
 	
 	var client = cache_client(port, host);
 	var requestPath = path + encodeOptions(options);
@@ -51,14 +51,14 @@ function _interact(verb, path, successStatus, options, port, host) {
 	}
 	
 	if (options.body) {
-		if (verb === "get") {
-			verb = "post";
+		if (verb === "GET") {
+			verb = "POST";
 		}
 		var requestBody = toJSON(options.body);
-		request = client[verb](requestPath, [["Content-Length", requestBody.length], ["Content-Type", "application/json"]]);
+		request = client.request(verb, requestPath, [["Content-Length", requestBody.length], ["Content-Type", "application/json"]]);
 		request.sendBody(requestBody, "utf8");
 	} else {
-		request = client[verb](requestPath);
+		request = client.request(verb, requestPath);
 	}
 	request.finish(function(response) {
 		var responseBody = "";
@@ -74,14 +74,13 @@ function _interact(verb, path, successStatus, options, port, host) {
 			}
 			responseBody = JSON.parse(responseBody);
 			if (response.statusCode === successStatus) {
-				if (options.success) {
-					options.success(responseBody);
-				}
-			} else if (options.error) {
-				options.error(responseBody);
+				promise.emitSuccess(responseBody);
+			} else {
+				promise.emitError(responseBody);
 			}
 		});
 	});
+	return promise;
 }
 
 function encodeOptions(options) {
@@ -116,11 +115,11 @@ var CouchDB = {
 	debug : true,
 	
 	activeTasks: function(options) {
-		_interact("get", "/_active_tasks", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
+		return _interact("get", "/_active_tasks", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
 	},
 	
 	allDbs : function(options) {
-		_interact("get", "/_all_dbs", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);	
+		return _interact("get", "/_all_dbs", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);	
 	},
 	
 	generateUUIDs : function(options) {
@@ -128,11 +127,15 @@ var CouchDB = {
 		if (!options.count) {
 			options.count = 100;
 		}
-		var callback = options.success;
-		options.success = function(result) {
-			callback(result.uuids);
-		};
-		_interact("get", "/_uuids", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
+		
+		var promiseWrapper = new process.Promise();
+		var promise = _interact("get", "/_uuids", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
+		promise.addCallback(
+			function(result) { promiseWrapper.emitSuccess(result.uuids); }
+		).addErrback(
+			function(error) { promiseWrapper.emitError(error); }
+		);
+		return promiseWrapper;
 	},
 	
 	db : function(name, port, host) {
@@ -146,27 +149,27 @@ var CouchDB = {
 				if (!suppressPrefix) {
 					path = this.uri + path;
 				}
-				_interact(verb, path, successStatus, options, this.port, this.host);
+				return _interact(verb, path, successStatus, options, this.port, this.host);
 			},
 			
 			compact : function(options) {
-				this.interact("post", "_compact", 202, options);
+				return this.interact("post", "_compact", 202, options);
 			},
 			
 			create : function(options) {
-				this.interact("put", "", 201, options);
+				return this.interact("put", "", 201, options);
 			},
 			
 			drop : function(options) {
-				this.interact("del", "", 200, options);
+				return this.interact("delete", "", 200, options);
 			},
 			
 			info : function(options) {
-				this.interact("get", "", 200, options);				
+				return this.interact("get", "", 200, options);				
 			},
 
 			allDocs : function(options) {
-				this.interact("get", "_all_docs", 200, options);
+				return this.interact("get", "_all_docs", 200, options);
 			},
 
 			openDoc : function(docId, options) {
@@ -179,48 +182,50 @@ var CouchDB = {
 						keys : docId
 					};				
 				}
-				this.interact("get", path, 200, options); // interact will override get to post when needed
+				return this.interact("get", path, 200, options); // interact will override get to post when needed
 			},
 
 			saveDoc : function(doc, options) {
 				options = options || {};
+				options.body = doc;
+				var promise, promiseWrapper = new process.Promise();
+				
 				doc = doc || {};
-				var success = options.success;
-				options.success = function(result) {
+				if (doc._id === undefined) {
+					promise = this.interact("post", "", 201, options);
+				} else {
+					promise = this.interact("put", doc._id, 201, options);
+				}
+				
+				promise.addCallback(function(result) {
 					if (!result.ok) {
-						options.error(result);
+						promiseWrapper.emitError(result);
 					} else {
 						doc._id = result.id;
 						doc._rev = result.rev;
+						promiseWrapper.emitSuccess(doc);
 					}
-					if (success) { success(doc); }
-				};
+				}).addErrback(function (error) { promiseWrapper.emitError(error); });
 
-				options.body = doc;
-
-				if (doc._id === undefined) {
-					this.interact("post", "", 201, options);
-				} else {
-					this.interact("put", doc._id, 201, options);
-				}
+				return promiseWrapper;
 			},
 
 			removeDoc : function(doc, options) {
 				options = options || {};
 				options.rev = doc._rev;
 
-				var success = options.success;
-				options.success = function(result) {
+				var promise, promiseWrapper = new process.Promise();
+				promise = this.interact("delete", doc._id, 200, options);
+				promise.addCallback(function(result) {
 					if (!result.ok) {
-						options.error(result);
+						promiseWrapper.emitError(result);
+					} else {
+						delete doc._rev;
+						promiseWrapper.emitSuccess(doc);
 					}
-					delete doc._rev;
-					if (success) {
-						success(doc);						 
-					}
-				};
+				}).addErrback(function(error) { promiseWrapper.emitError(error); });
 
-				this.interact("del", doc._id, 200, options);
+				return promiseWrapper;
 			},
 
 			view : function(name, options) {

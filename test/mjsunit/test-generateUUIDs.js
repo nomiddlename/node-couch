@@ -1,31 +1,24 @@
-include("mjsunit.js");
-include("../../module/node-couch.js");
+process.mixin(GLOBAL, require("./mjsunit"));
+process.mixin(GLOBAL, require("../../module/node-couch"));
 
 function unwantedError(result) {
-	throw("Unwanted error" + JSON.stringify(result));
+	throw(new Error("Unwanted error" + JSON.stringify(result)));
 }
 
 var result = 0;
 
-function onLoad () {
-	CouchDB.generateUUIDs({
-		count : 10,
-		success : function(response) {
-			result++;
-			assertEquals(10, response.length, "not honoring count");
-		},
-		error : unwantedError
-	});
-	CouchDB.generateUUIDs({
-		success : function(response) {
-			result++;
-			assertEquals(100, response.length, "not honoring default count");
-		},
-		error : unwantedError
-	});
-	
-}
+CouchDB.generateUUIDs({	count : 10 }).addCallback(
+	function(response) {
+		result++;
+		assertEquals(10, response.length, "not honoring count");
+	}
+).addErrback(unwantedError).wait();
 
-function onExit() {
-	assertEquals(2, result, "Number of callbacks mismatch");
-}
+CouchDB.generateUUIDs().addCallback(
+	function(response) {
+		result++;
+		assertEquals(100, response.length, "not honoring default count");
+	}
+).addErrback(unwantedError).wait();
+
+assertEquals(2, result, "Number of callbacks mismatch");

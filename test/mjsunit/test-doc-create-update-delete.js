@@ -1,8 +1,8 @@
-include("mjsunit.js");
-include("../../module/node-couch.js");
+process.mixin(GLOBAL, require("./mjsunit"));
+process.mixin(GLOBAL, require("../../module/node-couch"));
 
 function unwantedError(result) {
-	throw("Unwanted error" + JSON.stringify(result));
+	throw(new Error("Unwanted error" + JSON.stringify(result)));
 }
 
 var db;
@@ -10,28 +10,16 @@ var doc;
 var id;
 var rev;
 
-function onLoad () {
-	CouchDB.generateUUIDs({
-		count : 1,
-		success : withUUIDs,
-		error : unwantedError
-	});
-}
+CouchDB.generateUUIDs({	count : 1 }).addCallback(withUUIDs).addErrback(unwantedError).wait();
 
 function withUUIDs(uuids) {
 	db = CouchDB.db("test" + uuids[0]);
-	db.create({
-		success : withDB,
-		error : unwantedError
-	});
+	db.create().addCallback(withDB).addErrback(unwantedError).wait();
 }
 
 function withDB() {
 	doc = {};
-	db.saveDoc(doc, {
-		success : afterSave,
-		error : unwantedError
-	});
+	db.saveDoc(doc).addCallback(afterSave).addErrback(unwantedError).wait();
 }
 
 function afterSave(returnVal) {
@@ -41,10 +29,7 @@ function afterSave(returnVal) {
 	id = doc._id;
 	rev = doc._rev;
 	doc.foo = "bar";
-	db.saveDoc(doc, {
-		success : afterUpdate,
-		error : unwantedError
-	});
+	db.saveDoc(doc).addCallback(afterUpdate).addErrback(unwantedError).wait();
 }
 
 function afterUpdate(returnVal) {
@@ -53,10 +38,7 @@ function afterUpdate(returnVal) {
 	assertFalse(doc._rev === rev, "rev did not update");
 	assertEquals(id, doc._id, "doc id changed");
 	
-	db.removeDoc(doc, {
-		success : afterRemove,
-		error : unwantedError
-	});
+	db.removeDoc(doc).addCallback(afterRemove).addErrback(unwantedError).wait();
 }
 
 function afterRemove(returnVal) {
@@ -65,16 +47,11 @@ function afterRemove(returnVal) {
 	assertTrue(doc._rev === undefined, "did not remove the rev");
 	assertEquals(id, doc._id, "changed the id");
 	
-	db.drop({
-		success : afterDrop,
-		error : unwantedError
-	});
+	db.drop().addCallback(afterDrop).addErrback(unwantedError).wait();
 }
 
 function afterDrop() {
 	db = "success";
 }
 
-function onExit() {
-	assertEquals("success", db, "Please check the chain, last callback was never reached");
-}
+assertEquals("success", db, "Please check the chain, last callback was never reached");
