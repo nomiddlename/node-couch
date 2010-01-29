@@ -8,3 +8,6 @@ If the header is not enough for you:
 
 The API has been changed from the original [node-couch](http://github.com/sixtus/node-couch) and now returns promises
 instead of needing success and error callback functions in the options object.
+
+===========================================
+
