@@ -1,5 +1,4 @@
 var
-	sys = require('sys'),
 	assert = require('assert'),
 	couch = require('../module/node-couch').CouchDB,
 	logging = require('../module/log4js-node');

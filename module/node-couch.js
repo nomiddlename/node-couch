@@ -68,7 +68,7 @@ function _interact(verb, path, successStatus, options, port, host) {
 		}
 		var requestBody = toJSON(options.body);
 		request = client.request(verb, requestPath, [["Content-Length", requestBody.length], ["Content-Type", "application/json"]]);
-		request.sendBody(requestBody, "utf8");
+		request.write(requestBody, "utf8");
 	} else {
 		request = client.request(verb, requestPath);
 	}
@@ -140,14 +140,13 @@ var CouchDB = {
 			options.count = 100;
 		}
 		
-		var promiseWrapper = new process.Promise();
-		var promise = _interact("get", "/_uuids", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
-		promise.addCallback(
-			function(result) { promiseWrapper.emitSuccess(result.uuids); }
-		).addErrback(
-			function(error) { promiseWrapper.emitError(error); }
+		var deferred = new promise.Deferred();
+		var response = _interact("get", "/_uuids", 200, options, CouchDB.defaultPort, CouchDB.defaultHost);
+		response.then(
+			function(result) { deferred.emitSuccess(result.uuids); },
+			function(error) { deferred.emitError(error); }
 		);
-		return promiseWrapper;
+		return deferred.promise;
 	},
 	
 	db : function(name, port, host) {
@@ -200,44 +199,50 @@ var CouchDB = {
 			saveDoc : function(doc, options) {
 				options = options || {};
 				options.body = doc;
-				var promise, promiseWrapper = new process.Promise();
+				var response, deferred = new promise.Deferred();
 				
 				doc = doc || {};
 				if (doc._id === undefined) {
-					promise = this.interact("post", "", 201, options);
+					response = this.interact("post", "", 201, options);
 				} else {
-					promise = this.interact("put", doc._id, 201, options);
+					response = this.interact("put", doc._id, 201, options);
 				}
 				
-				promise.addCallback(function(result) {
-					if (!result.ok) {
-						promiseWrapper.emitError(result);
-					} else {
-						doc._id = result.id;
-						doc._rev = result.rev;
-						promiseWrapper.emitSuccess(doc);
-					}
-				}).addErrback(function (error) { promiseWrapper.emitError(error); });
+				response.then(
+					function(result) {
+						if (!result.ok) {
+							deferred.emitError(result);
+						} else {
+							doc._id = result.id;
+							doc._rev = result.rev;
+							deferred.emitSuccess(doc);
+						}
+					},
+					function (error) { deferred.emitError(error); }
+				);
 
-				return promiseWrapper;
+				return deferred.promise;
 			},
 
 			removeDoc : function(doc, options) {
 				options = options || {};
 				options.rev = doc._rev;
 
-				var promise, promiseWrapper = new process.Promise();
-				promise = this.interact("delete", doc._id, 200, options);
-				promise.addCallback(function(result) {
-					if (!result.ok) {
-						promiseWrapper.emitError(result);
-					} else {
-						delete doc._rev;
-						promiseWrapper.emitSuccess(doc);
-					}
-				}).addErrback(function(error) { promiseWrapper.emitError(error); });
+				var response, deferred = new promise.Deferred();
+				response = this.interact("delete", doc._id, 200, options);
+				response.then(
+					function(result) {
+						if (!result.ok) {
+							deferred.emitError(result);
+						} else {
+							delete doc._rev;
+							deferred.emitSuccess(doc);
+						}
+					},
+					function(error) { promiseWrapper.emitError(error); }
+				);
 
-				return promiseWrapper;
+				return deferred.promise;
 			},
 
 			view : function(name, options) {

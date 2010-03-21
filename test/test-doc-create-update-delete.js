@@ -1,5 +1,10 @@
-process.mixin(GLOBAL, require("./mjsunit"));
-process.mixin(GLOBAL, require("../../module/node-couch"));
+var
+	assert = require('assert'),
+	couch = require('../module/node-couch').CouchDB,
+	logging = require('../module/log4js-node');
+
+var log = logging.getLogger('test.doc-crud');
+logging.addAppender(logging.consoleAppender());
 
 function unwantedError(result) {
 	throw(new Error("Unwanted error" + JSON.stringify(result)));
@@ -10,53 +15,46 @@ var doc;
 var id;
 var rev;
 
-CouchDB.generateUUIDs({	count : 1 }).addCallback(withUUIDs).addErrback(unwantedError).wait();
+couch.generateUUIDs({	count : 1 }).then(withUUIDs, unwantedError);
 
 function withUUIDs(uuids) {
-	db = CouchDB.db("test" + uuids[0]);
-	db.create().addCallback(withDB).addErrback(unwantedError).wait();
+	db = couch.db("test" + uuids[0]);
+	db.create().then(withDB, unwantedError);
 }
 
 function withDB() {
 	doc = {};
-	db.saveDoc(doc).addCallback(afterSave).addErrback(unwantedError).wait();
+	db.saveDoc(doc).then(afterSave, unwantedError);
 }
 
 function afterSave(returnVal) {
-	assertEquals(doc, returnVal, "should return the doc");
-	assertEquals(typeof doc._id, "string");
+	assert.equal(doc, returnVal);
+	assert.equal(typeof doc._id, "string");
 	
 	id = doc._id;
 	rev = doc._rev;
 	doc.foo = "bar";
-	db.saveDoc(doc).addCallback(afterUpdate).addErrback(unwantedError).wait();
+	db.saveDoc(doc).then(afterUpdate, unwantedError);
 }
 
 function afterUpdate(returnVal) {
-	assertEquals(doc, returnVal, "should return the doc");
-	assertEquals(typeof doc._id, "string");
-	assertFalse(doc._rev === rev, "rev did not update");
-	assertEquals(id, doc._id, "doc id changed");
+	assert.equal(doc, returnVal);
+	assert.equal(typeof doc._id, "string");
+	assert.notEqual(doc._rev, rev);
+	assert.equal(id, doc._id);
 	
-	db.addAttachment(doc, attachment, "text/plain").addCallback(afterAttachment).addErrback(unwantedError).wait();
-}
-
-function afterAttachment(returnVal) {
-	
-	db.removeDoc(doc).addCallback(afterRemove).addErrback(unwantedError).wait();
+	db.removeDoc(doc).then(afterRemove, unwantedError);
 }
 
 function afterRemove(returnVal) {
-	assertEquals(doc, returnVal, "did not return the doc");
+	assert.equal(doc, returnVal);
 
-	assertTrue(doc._rev === undefined, "did not remove the rev");
-	assertEquals(id, doc._id, "changed the id");
+	assert.ok(doc._rev === undefined);
+	assert.equal(id, doc._id);
 	
-	db.drop().addCallback(afterDrop).addErrback(unwantedError).wait();
+	db.drop().then(afterDrop, unwantedError);
 }
 
 function afterDrop() {
-	db = "success";
+	log.debug("test passed");
 }
-
-assertEquals("success", db, "Please check the chain, last callback was never reached");

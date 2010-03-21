@@ -1,5 +1,10 @@
-process.mixin(GLOBAL, require("./mjsunit"));
-process.mixin(GLOBAL, require("../../module/node-couch"));
+var
+	assert = require('assert'),
+	couch = require('../module/node-couch').CouchDB,
+	logging = require('../module/log4js-node');
+
+var log = logging.getLogger('test.create-compact-info-drop');
+logging.addAppender(logging.consoleAppender());
 
 function unwantedError(result) {
 	throw(new Error("Unwanted error" + JSON.stringify(result)));
@@ -7,29 +12,26 @@ function unwantedError(result) {
 
 var db;
 
-CouchDB.generateUUIDs({ count : 1 }).addCallback(withUUIDs).addErrback(unwantedError).wait();
+couch.generateUUIDs({ count : 1 }).then(withUUIDs, unwantedError);
 
 function withUUIDs(uuids) {
-	db = CouchDB.db("test" + uuids[0]);
-	db.create().addCallback(withDB).addErrback(unwantedError).wait();
+	db = couch.db("test" + uuids[0]);
+	db.create().then(withDB, unwantedError);
 }
 
 function withDB() {
-	db.compact().addCallback(afterCompact).addErrback(unwantedError).wait();
+	db.compact().then(afterCompact, unwantedError);
 }
 
 function afterCompact() {
-	db.info().addCallback(withInfo).addErrback(unwantedError).wait();
+	db.info().then(withInfo, unwantedError);
 }
 
 function withInfo(info) {
-	assertEquals(db.name, info.db_name);
-
-	db.drop().addCallback(afterDrop).addErrback(unwantedError).wait();
+	assert.equal(db.name, info.db_name);
+	db.drop().then(afterDrop, unwantedError);
 }
 
 function afterDrop() {
-	db = "success";
+	log.debug("test passed");
 }
-
-assertEquals("success", db, "Please check the chain, last callback was never reached");
