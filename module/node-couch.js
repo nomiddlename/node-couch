@@ -21,7 +21,21 @@ THE SOFTWARE.
 */
 
 var sys = require('sys'),
-    http = require('http');
+    http = require('http'),
+		promise = require('./promise');
+
+try {
+	var log = require('./log4js-node').getLogger('couch');
+} catch (e) {
+	//no log4js? let's define a little replacement
+	var log = {
+		debug: function(message) {
+			if (process.ENV['NODE_DEBUG'] > 0) {
+				sys.debug(message);
+			}
+		}
+	}
+}
 
 var clients = {};
 
@@ -38,13 +52,11 @@ function cache_client(port, host) {
 function _interact(verb, path, successStatus, options, port, host) {
   verb = verb.toUpperCase();
 	options = options || {};
-	var request, promise = new process.Promise();
+	var request, deferred = new promise.Deferred();
 	
 	var client = cache_client(port, host);
 	var requestPath = path + encodeOptions(options);
-	if (CouchDB.debug) {
-		sys.puts("COUCHING " + requestPath + " -> " + verb);
-	}
+	log.debug("COUCHING " + requestPath + " -> " + verb);
 	
 	if (options.keys) {
 		options.body = {keys: options.keys};
@@ -60,27 +72,27 @@ function _interact(verb, path, successStatus, options, port, host) {
 	} else {
 		request = client.request(verb, requestPath);
 	}
-	request.finish(function(response) {
+	request.addListener("response", function(response) {
 		var responseBody = "";
 		response.setBodyEncoding("utf8");
 		
-		response.addListener("body", function(chunk) {
+		response.addListener("data", function(chunk) {
 			responseBody += chunk;
 		});
 		
-		response.addListener("complete", function() {
-			if (CouchDB.debug) {
-				sys.puts("COMPLETED " + requestPath + " -> " + verb);
-			}
+		response.addListener("end", function() {
+			log.debug("COMPLETED " + requestPath + " -> " + verb);
+
 			responseBody = JSON.parse(responseBody);
 			if (response.statusCode === successStatus) {
-				promise.emitSuccess(responseBody);
+				deferred.emitSuccess(responseBody);
 			} else {
-				promise.emitError(responseBody);
+				deferred.emitError(responseBody);
 			}
 		});
 	});
-	return promise;
+	request.close();
+	return deferred.promise;
 }
 
 function encodeOptions(options) {
